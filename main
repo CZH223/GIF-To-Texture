@@ -1,0 +1,146 @@
+import os
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from PIL import Image, ImageSequence
+
+def create_minecraft_structure():
+    base_path = input("请输入基础路径: ").strip()
+    folder_name = input("请输入主文件夹名称: ").strip()
+    main_folder = os.path.join(base_path, folder_name)
+    try:
+        os.makedirs(main_folder)
+        print(f"已创建主文件夹: {main_folder}")
+    except FileExistsError:
+        print(f"主文件夹已存在: {main_folder}")
+    pack_meta_path = os.path.join(main_folder, "pack.mcmeta")
+    with open(pack_meta_path, 'w', encoding='utf-8') as f:
+        f.write('''{
+    "pack":{
+        "description": "示例资源包",
+        "pack_format": 55,
+        "supported_formats": [4,64]
+    }
+}''')
+    print(f"已创建文件: {pack_meta_path}")
+    assets_path = os.path.join(main_folder, "assets")
+    minecraft_path = os.path.join(assets_path, "minecraft")
+    textures_path = os.path.join(minecraft_path, "textures")
+    block_path = os.path.join(textures_path, "block")
+    os.makedirs(block_path, exist_ok=True)
+    print(f"已创建目录结构: {block_path}")
+    lujin1 = os.path.abspath(block_path)
+    print(f"block文件夹路径已保存到变量 lujin1: {lujin1}")
+    return main_folder, lujin1
+def process_gif_with_pillow(gif_path, main_folder, lujin1):
+    """模块2：使用Pillow处理GIF文件并生成逐帧长图"""
+    try:
+        gif = Image.open(gif_path)
+        width, height = gif.size
+        print(f"GIF原始尺寸: {width}x{height}")
+        if width != height:
+            print(f"警告: GIF不是正方形 ({width}x{height})")
+            print("将使用最大正方形区域")
+            size = min(width, height)
+        else:
+            size = width
+        frame_count = 0
+        frames = []
+        for frame in ImageSequence.Iterator(gif):
+            frame_count += 1
+            frames.append(frame.copy())
+        print(f"总帧数: {frame_count}")
+        long_image_height = size * frame_count
+        MAX_DIMENSION = 40000 
+        if long_image_height > MAX_DIMENSION:
+            print(f"错误: 生成长图高度({long_image_height})超出Pillow处理限制({MAX_DIMENSION})")
+            return None, None
+        print(f"将生成长图尺寸: {size}x{long_image_height}")
+        long_image = Image.new('RGBA', (size, long_image_height))
+        current_y = 0
+        for i, frame in enumerate(frames):
+            frame_rgba = frame.convert('RGBA')
+            if width != height:
+                left = (width - size) // 2
+                top = (height - size) // 2
+                frame_cropped = frame_rgba.crop((left, top, left + size, top + size))
+            else:
+                frame_cropped = frame_rgba
+            if i == 0:
+                pack_png_path = os.path.join(main_folder, "pack.png")
+                frame_cropped.save(pack_png_path, 'PNG')
+                print(f"第一帧已保存为: {pack_png_path}")
+            long_image.paste(frame_cropped, (0, current_y))
+            current_y += size
+            print(f"已处理第 {i+1}/{frame_count} 帧")
+        name = input('请输入指定材质的ID:') + '.png'
+        long_image_path = os.path.join(lujin1, name)
+        long_image.save(long_image_path, 'PNG')
+        print(f"长图已保存: {long_image_path}")
+        return pack_png_path, long_image_path
+    except Exception as e:
+        print(f"处理GIF时出错: {e}")
+        return None, None
+def create_mcmeta_file(long_image_path, lujin1):
+    """模块3：创建与长图同名的.mcmeta文件"""
+    try:
+        long_image_name = os.path.basename(long_image_path)
+        mcmeta_path = os.path.join(lujin1, f"{long_image_name}.mcmeta")
+        with open(mcmeta_path, 'w', encoding='utf-8') as f:
+            f.write('{\n  "animation": {}\n}')
+        print(f"已创建动画元数据文件: {mcmeta_path}")
+        return mcmeta_path
+    except Exception as e:
+        print(f"创建.mcmeta文件时出错: {e}")
+        return None
+def process_media_file(main_folder, lujin1):
+    """处理媒体文件的主函数"""
+    root = tk.Tk()
+    root.withdraw()
+    file_path = filedialog.askopenfilename(
+        title="选择GIF文件",
+        filetypes=[("GIF文件", "*.gif")]
+    )
+    if not file_path:
+        print("未选择文件，操作取消")
+        return None, None
+    file_ext = os.path.splitext(file_path)[1].lower()
+    if file_ext != '.gif':
+        print("错误：只支持GIF文件")
+        return None, None
+    return process_gif_with_pillow(file_path, main_folder, lujin1)
+def main():
+    """主函数：整合所有模块"""
+    print("=== Minecraft资源包生成器 ===")
+    print("模块1: 创建文件夹结构")
+    main_folder, lujin1 = create_minecraft_structure()
+    print("\n" + "="*50)
+    print("模块2: 处理GIF文件")
+    choice = input("是否要处理GIF文件生成逐帧长图? (y/n): ").strip().lower()
+    if choice == 'y':
+        pack_png_path, long_image_path = process_media_file(main_folder, lujin1)
+        if pack_png_path and long_image_path:
+            print(f"\n处理完成!")
+            print(f"第一帧已保存为: {pack_png_path}")
+            print(f"逐帧长图已保存为: {long_image_path}")
+            
+            print("\n" + "="*50)
+            print("模块3: 创建动画元数据文件")
+            mcmeta_path = create_mcmeta_file(long_image_path, lujin1)
+            if mcmeta_path:
+                print(f"动画元数据文件已创建: {mcmeta_path}")
+            else:
+                print("创建动画元数据文件失败")
+        else:
+            print("\nGIF处理失败")
+    else:
+        print("\n跳过GIF处理")
+    print("\n" + "="*50)
+    print("程序执行完成!")
+    print(f"主文件夹路径: {main_folder}")
+    print(f"Block文件夹路径: {lujin1}")
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showinfo("完成", "Minecraft资源包生成完成!")
+while True:
+    if __name__ == "__main__":
+        main()
